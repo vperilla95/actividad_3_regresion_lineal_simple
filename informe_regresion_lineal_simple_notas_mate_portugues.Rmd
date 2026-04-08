@@ -17,29 +17,28 @@ encoding: UTF-8
 # Índice
 
 1. Índice
-2. Descripción del problema
-3. Carga, estructura y preparación de los datos
-4. Exploración inicial y selección de predictores
-5. Ajuste del modelo final para Matemáticas y Portugués
-6. Diagnóstico, atípicos e influencia
-7. Intervalos de confianza y predicciones
-8. Discusión y conclusiones
-9. Referencias
-10. Anexos
+2. Exploración de datos
+3. Ajuste del modelo final para Matemáticas y Portugués
+4. Análisis Diagnóstico
+5. Análisis Atípicos e influencia
+6. Intervalos de confianza y predicciones
+7. Discusión y conclusiones
+8. Referencias
+9. Anexos
 
-# Descripción del problema
+# Exploración de datos
 
-La actividad plantea ajustar dos modelos de regresión lineal simple, con el objetivo de predecir la nota final **G3** a partir de una sola variable cuantitativa, uno para Matemáticas y otro para Lengua Portuguesa. El informe debe incluir exploración, ajuste, pruebas *t* y *F*, coeficiente de determinación, revisión de supuestos, detección de observaciones atípicas o influyentes, intervalos de confianza y predicciones, en concordancia con la guía de la actividad propuesta.
+## Descripción del problema
 
-El conjunto de datos corresponde al estudio *Student Performance in Secondary Education*. El artículo base señala que **G3 es la calificación final**, para este análisis tomaremos en cuenta las posibles opciones de variable predictora cuantitativa para una regresión lineal simple, como lo pueden ser notas previas **G1** y **G2**, cantidad de ausencias, historial de pérdidas, factores familiares u otras.
+La actividad plantea ajustar dos modelos de regresión lineal simple, con el objetivo de predecir la nota final **G3** a partir de una sola variable cuantitativa, uno para Matemáticas y otro para Lengua Portuguesa.
 
-# Carga, estructura y preparación de los datos
+## Carga, estructura y preparación de los datos
 
 ```{r librerias, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
 paquetes <- c(
   "ggplot2", "dplyr", "tidyr", "tibble", "purrr", "readr", "knitr",
   "kableExtra", "bookdown", "patchwork", "lmtest", "car", "broom",
-  "GGally", "scales", "stringr"
+  "GGally", "scales", "stringr", "grid", "gridExtra", "tidyverse","e1071"
 )
 
 for (p in paquetes) {
@@ -52,7 +51,7 @@ for (p in paquetes) {
 }
 ```
 
-```{r carga_datos}
+```{r cargaDatos}
 mat <- read.csv("datos/student-mat.csv", sep = ";", stringsAsFactors = FALSE)
 por <- read.csv("datos/student-por.csv", sep = ";", stringsAsFactors = FALSE)
 
@@ -85,9 +84,9 @@ knitr::kable(
   )
 ```
 
-Las dos bases conservan la misma estructura de 33 columnas y no presentan valores faltantes. Esto simplifica el proceso, ya que no fue necesario imputar ni eliminar registros por ausencia de información. Para el análisis de regresión lineal simple solo se consideran las variables cuantitativas, pues la actividad excluye predictores cualitativos.
+En la Tabla \@ref(tab:cargaDatos) se observa que las dos bases conservan la misma estructura de 33 columnas y no presentan valores faltantes. No fue necesario imputar ni eliminar registros. Las variables a analizar son las de la tabla \@ref(tab:diccionarioVariables)
 
-```{r diccionario_variables}
+```{r diccionarioVariables}
 diccionario <- tibble(
   Variable = c(
     "age", "Medu", "Fedu", "traveltime", "studytime", "failures", "famrel",
@@ -124,69 +123,87 @@ knitr::kable(
     full_width = FALSE,
     font_size = 12
   ) |>
-  kableExtra::scroll_box(height = "320px")
+  kableExtra::scroll_box(height = "100%")
 ```
+## Exploración inicial y selección de predictores
 
-```{r descriptivos_g3}
-resumen_principal <- tibble(
-  Base = c("Matemáticas", "Portugués"),
+```{r descriptivos}
+# Variables cuantitativas a resumir
+variables_cuantitativas <- c(
+  "age", "Medu", "Fedu", "traveltime", "studytime", "failures", "famrel",
+  "freetime", "goout", "Dalc", "Walc", "health", "absences", "G1", "G2", "G3"
+)
 
-  Media = c(mean(mat$G3), mean(por$G3)),
-  Mediana = c(median(mat$G3), median(por$G3)),
-  DE = c(sd(mat$G3), sd(por$G3)),
-  CV = c(sd(mat$G3) / mean(mat$G3) * 100,
-         sd(por$G3) / mean(por$G3) * 100),
-
-  Min = c(min(mat$G3), min(por$G3)),
-  P10 = c(quantile(mat$G3, 0.10), quantile(por$G3, 0.10)),
-  Q1 = c(quantile(mat$G3, 0.25), quantile(por$G3, 0.25)),
-  Q2 = c(quantile(mat$G3, 0.50), quantile(por$G3, 0.50)),
-  Q3 = c(quantile(mat$G3, 0.75), quantile(por$G3, 0.75)),
-  P90 = c(quantile(mat$G3, 0.90), quantile(por$G3, 0.90)),
-  Max = c(max(mat$G3), max(por$G3)),
-
-  IQR = c(IQR(mat$G3), IQR(por$G3)),
-
-  Lim_inf_outlier = c(
-    quantile(mat$G3, 0.25) - 1.5 * IQR(mat$G3),
-    quantile(por$G3, 0.25) - 1.5 * IQR(por$G3)
-  ),
-  Lim_sup_outlier = c(
-    quantile(mat$G3, 0.75) + 1.5 * IQR(mat$G3),
-    quantile(por$G3, 0.75) + 1.5 * IQR(por$G3)
-  ),
-
-  Outliers_bajos = c(
-    sum(mat$G3 < (quantile(mat$G3, 0.25) - 1.5 * IQR(mat$G3))),
-    sum(por$G3 < (quantile(por$G3, 0.25) - 1.5 * IQR(por$G3)))
-  ),
-  Outliers_altos = c(
-    sum(mat$G3 > (quantile(mat$G3, 0.75) + 1.5 * IQR(mat$G3))),
-    sum(por$G3 > (quantile(por$G3, 0.75) + 1.5 * IQR(por$G3)))
-  ),
-  Outliers_total = c(
-    sum(mat$G3 < (quantile(mat$G3, 0.25) - 1.5 * IQR(mat$G3)) |
-          mat$G3 > (quantile(mat$G3, 0.75) + 1.5 * IQR(mat$G3))),
-    sum(por$G3 < (quantile(por$G3, 0.25) - 1.5 * IQR(por$G3)) |
-          por$G3 > (quantile(por$G3, 0.75) + 1.5 * IQR(por$G3)))
+# Función de resumen descriptivo por variable
+resumen_variable <- function(df, nombre_base, var_name) {
+  
+  x <- df[[var_name]]
+  
+  q1  <- quantile(x, 0.25, na.rm = TRUE)
+  q2  <- quantile(x, 0.50, na.rm = TRUE)
+  q3  <- quantile(x, 0.75, na.rm = TRUE)
+  p10 <- quantile(x, 0.10, na.rm = TRUE)
+  p90 <- quantile(x, 0.90, na.rm = TRUE)
+  iqr <- IQR(x, na.rm = TRUE)
+  
+  lim_inf <- q1 - 1.5 * iqr
+  lim_sup <- q3 + 1.5 * iqr
+  
+  tibble(
+    Base = nombre_base,
+    Variable = var_name,
+    Media = mean(x, na.rm = TRUE),
+    Mediana = median(x, na.rm = TRUE),
+    DE = sd(x, na.rm = TRUE),
+    CV = ifelse(mean(x, na.rm = TRUE) == 0, NA, sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100),
+    Skewness = e1071::skewness(x, na.rm = TRUE, type = 2),
+    Kurtosis = e1071::kurtosis(x, na.rm = TRUE, type = 2),
+    Min = min(x, na.rm = TRUE),
+    P10 = p10,
+    Q1 = q1,
+    Q2 = q2,
+    Q3 = q3,
+    P90 = p90,
+    Max = max(x, na.rm = TRUE),
+    IQR = iqr,
+    Lim_inf_outlier = lim_inf,
+    Lim_sup_outlier = lim_sup,
+    Outliers_bajos = sum(x < lim_inf, na.rm = TRUE),
+    Outliers_altos = sum(x > lim_sup, na.rm = TRUE),
+    Outliers_total = sum(x < lim_inf | x > lim_sup, na.rm = TRUE)
   )
+}
+
+# Tabla completa para Matemáticas y Portugués
+tabla_descriptiva <- bind_rows(
+  map_dfr(variables_cuantitativas, ~ resumen_variable(mat, "Matemáticas", .x)),
+  map_dfr(variables_cuantitativas, ~ resumen_variable(por, "Portugués", .x))
 )
 
 knitr::kable(
-  resumen_principal,
-  caption = "Resumen descriptivo ampliado de la variable G3, incluyendo medidas de tendencia central, dispersión, posición y detección de valores atípicos.",
+  tabla_descriptiva,
+  caption = "Resumen descriptivo ampliado de todas las variables cuantitativas en Matemáticas y Portugués, incluyendo asimetría, curtosis y detección de valores atípicos.",
   digits = 2,
   format = "html"
 ) |>
   kableExtra::kable_styling(
     bootstrap_options = c("striped", "hover", "bordered"),
     full_width = FALSE,
-    font_size = 11
+    font_size = 10
   ) |>
-  kableExtra::scroll_box(width = "100%", height = "320px")
+  kableExtra::scroll_box(width = "100%", height = "100%")
 ```
+ En la Tabla \@ref(tab:descriptivos) evidencia que la variable respuesta **G3** presenta una distribución con asimetría negativa en ambas asignaturas, indicando concentración en calificaciones altas. En Matemáticas se observa mayor dispersión (CV ≈ 44%) respecto a Portugués (CV ≈ 27%), lo que sugiere mayor dificultad de predicción en la primera.
 
-```{r distribucion_g3, fig.width=10, fig.height=4.5, fig.cap="Distribución de la nota final G3 en Matemáticas y Portugués con densidad, tendencia central y límites de outliers."}
+En cuanto a valores atípicos, no se identifican en Matemáticas, mientras que en Portugués existen outliers bajos, lo cual puede afectar la estimación de modelos lineales y deberá considerarse en el análisis de residuos.
+
+Respecto a las variables predictoras, se identifican como poco informativas aquellas con alta dispersión relativa o baja variabilidad efectiva, como **absences**, **health**, **freetime**, **goout** y **famrel**, las cuales presentan distribuciones altamente sesgadas o concentradas que limitan su capacidad explicativa.
+
+Por el contrario, variables como **G2** y **G1** muestran una estructura consistente con la variable respuesta, lo que puede permitir obtener buena información de estas variables, esto también confirma la evidencia del artículo base. Asimismo, variables como **studytime** y el nivel educativo de los padres (**Medu**, **Fedu**) presentan coherencia teórica y estabilidad estadística, por lo que se pueden también ser buenas variables para tener en cuenta.
+
+La demás variables podrían aportar información, pero su inclusión en un modelo lineal simple podria nos er tan robusto.
+
+```{r distribucionG3, fig.width=10, fig.height=4.5, fig.cap="Distribución de la nota final G3 en Matemáticas y Portugués con densidad, tendencia central y límites de outliers."}
 
 # Estadísticos Matemáticas
 media_mat <- mean(mat$G3)
@@ -240,23 +257,11 @@ g2 <- ggplot(por, aes(x = G3)) +
 
 g1 + g2
 ```
+En la Figura \@ref(fig:distribucionG3) las distribuciones de G3 muestran una variable discreta, acotada entre 0 y 20, con mayor concentración en valores intermedios y altos. Este rasgo es importante desde el inicio porque anticipa que la normalidad de los errores puede no cumplirse de manera perfecta, incluso cuando el ajuste lineal sea fuerte. También se observa outliers en portugués y una gran cantidad de notas 0 para matemáticas.
 
-Las distribuciones de G3 muestran una variable discreta, acotada entre 0 y 20, con mayor concentración en valores intermedios y altos. Este rasgo es importante desde el inicio porque anticipa que la normalidad de los errores puede no cumplirse de manera perfecta, incluso cuando el ajuste lineal sea fuerte. También se observa outliers en portugués y una gran cantidad de notas 0 para matemáticas. 
+Para seleccionar la variable explicativa se calcularon correlaciones de Pearson y Spearman entre **G3** y todas las variables cuantitativas disponibles. Se privilegió la correlación de Pearson por ser coherente con el enfoque lineal, pero también se revisó Spearman como contraste de robustez frente a la naturaleza ordinal de varias covariables.
 
-# Exploración inicial y selección de predictores
-
-Para seleccionar la variable explicativa se calcularon correlaciones de Pearson y Spearman entre **G3** y todas las variables cuantitativas disponibles. Se privilegió la correlación de Pearson por ser coherente con el enfoque lineal del curso, pero también se revisó Spearman como contraste de robustez frente a la naturaleza ordinal de varias covariables.
-
-No se utiliza Kendall porque los predictores principales son cuantitativos y el tamaño muestral es grande, por lo que Pearson y Spearman son suficientes para el análisis.
-
-```{r tabla_visual_g3_mat, fig.width=14, fig.height=30, message=FALSE, warning=FALSE}
-library(dplyr)
-library(ggplot2)
-library(patchwork)
-library(purrr)
-library(grid)
-library(gridExtra)
-
+```{r tablaVisualG3Mat, fig.width=14, fig.height=30, message=FALSE, warning=FALSE,  fig.cap="Tabla visual de seleccion de predictores para G3 - Matematicas"}
 # Variables cuantitativas predictoras
 vars_y <- c(
   "age", "Medu", "Fedu", "traveltime", "studytime", "failures", "famrel",
@@ -394,3 +399,630 @@ grafico_final <- wrap_plots(c(list(encabezado), filas_plots), ncol = 1) +
 
 grafico_final
 ```
+```{r tablaVisualG3Port, fig.width=14, fig.height=30, message=FALSE, warning=FALSE,  fig.cap="Tabla visual de seleccion de predictores para G3 - Portugues"}
+
+# Variables cuantitativas predictoras (las mismas)
+vars_y <- c(
+  "age", "Medu", "Fedu", "traveltime", "studytime", "failures", "famrel",
+  "freetime", "goout", "Dalc", "Walc", "health", "absences", "G1", "G2"
+)
+
+# Función para asteriscos
+signif_stars <- function(p) {
+  if (is.na(p)) {
+    ""
+  } else if (p < 0.001) {
+    "***"
+  } else if (p < 0.01) {
+    "**"
+  } else if (p < 0.05) {
+    "*"
+  } else {
+    ""
+  }
+}
+
+tabla_corr <- tibble(variable = vars_y) |>
+  dplyr::mutate(
+    pearson = map_dbl(variable, ~ cor(por[[.x]], por$G3, method = "pearson", use = "complete.obs")),
+    spearman = map_dbl(variable, ~ cor(por[[.x]], por$G3, method = "spearman", use = "complete.obs")),
+    abs_pearson = abs(pearson),
+    p_pearson = map_dbl(variable, ~ cor.test(por[[.x]], por$G3, method = "pearson")$p.value),
+    p_spearman = map_dbl(variable, ~ cor.test(por[[.x]], por$G3, method = "spearman", exact = FALSE)$p.value)
+  ) |>
+  dplyr::arrange(desc(abs_pearson))
+
+# Función para construir cada fila
+crear_fila <- function(var_name, pearson, spearman, p_pearson, p_spearman) {
+  
+  datos_var <- tibble(
+    G3 = por$G3,
+    variable = por[[var_name]]
+  )
+  
+  # Scatter
+  p_scatter <- ggplot(datos_var, aes(x = variable, y = G3)) +
+    geom_point(alpha = 0.30, size = 0.9, color = "gray30") +
+    geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5) +
+    labs(
+      title = paste0("Scatter G3 vs ", var_name),
+      x = var_name,
+      y = "G3"
+    ) +
+    theme_minimal(base_size = 9)
+  
+  # Distribución
+  p_dist <- ggplot(datos_var, aes(x = variable)) +
+    geom_histogram(aes(y = after_stat(density)),
+                   bins = 15, fill = "steelblue", color = "white", alpha = 0.75) +
+    geom_density(color = "darkblue", linewidth = 0.6, alpha = 0.6) +
+    labs(
+      title = paste0("Distribucion ", var_name),
+      x = var_name,
+      y = "Densidad"
+    ) +
+    theme_minimal(base_size = 9)
+  
+  # Correlaciones
+  texto_corr <- paste0(
+    "Pearson: ", sprintf("%.3f", pearson), signif_stars(p_pearson), "\n",
+    "Spearman: ", sprintf("%.3f", spearman), signif_stars(p_spearman)
+  )
+  
+  p_corr <- ggplot() +
+    annotate("text", x = 0.5, y = 0.5, label = texto_corr,
+             size = 4.2, hjust = 0.5, vjust = 0.5) +
+    xlim(0, 1) + ylim(0, 1) +
+    theme_void() +
+    labs(title = paste0("Correlacion G3 - ", var_name))
+  
+  p_scatter + p_dist + p_corr + plot_layout(widths = c(3.2, 2.6, 1.8))
+}
+
+# Construcción
+filas_plots <- pmap(
+  list(
+    tabla_corr$variable,
+    tabla_corr$pearson,
+    tabla_corr$spearman,
+    tabla_corr$p_pearson,
+    tabla_corr$p_spearman
+  ),
+  crear_fila
+)
+
+# Encabezado
+header1 <- ggplot() +
+  annotate("text", x = 0.5, y = 0.5, label = "G3 vs Variable",
+           size = 4, fontface = "bold") +
+  xlim(0, 1) + ylim(0, 1) + theme_void()
+
+header2 <- ggplot() +
+  annotate("text", x = 0.5, y = 0.5, label = "Distribucion",
+           size = 4, fontface = "bold") +
+  xlim(0, 1) + ylim(0, 1) + theme_void()
+
+header3 <- ggplot() +
+  annotate("text", x = 0.5, y = 0.5, label = "Correlacion",
+           size = 4, fontface = "bold") +
+  xlim(0, 1) + ylim(0, 1) + theme_void()
+
+encabezado <- header1 + header2 + header3 +
+  plot_layout(widths = c(3.2, 2.6, 1.8))
+
+# Gráfico final
+grafico_final <- wrap_plots(c(list(encabezado), filas_plots), ncol = 1) +
+  plot_annotation(
+    title = "Tabla visual de seleccion de predictores para G3 - Portugues",
+    theme = theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+    )
+  )
+
+grafico_final
+```
+
+En las Figuras \@ref(fig:tablaVisualG3Mat) y \@ref(fig:tablaVisualG3Port) muestran que **G2** es la variable más asociada con **G3** en ambas asignaturas, seguida de **G1**. En Matemáticas, la correlación de Pearson entre G2 y G3 es cercana a 0.905; en Portugués es aproximadamente 0.919. Por tanto, para el modelo final se selecciona **G2** como predictor principal y se conserva **G1** como segunda mejor alternativa. Los candidatos par iteración fueron **G2**, **G1**, **failures**,**studytime**, **absences**.
+
+
+```{r dispersionMejores, fig.width=11, fig.height=8, fig.cap="Relación de G3 con los mejores predictores cuantitativos en cada asignatura.", message=FALSE, warning=FALSE}
+p1 <- ggplot(mat, aes(x = G2, y = G3)) +
+  geom_point(alpha = 0.65, color = "steelblue4") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Matemáticas: G3 vs G2", x = "G2", y = "G3") +
+  theme_minimal()
+
+p2 <- ggplot(mat, aes(x = G1, y = G3)) +
+  geom_point(alpha = 0.65, color = "steelblue4") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Matemáticas: G3 vs G1", x = "G1", y = "G3") +
+  theme_minimal()
+
+p3 <- ggplot(por, aes(x = G2, y = G3)) +
+  geom_point(alpha = 0.55, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Portugués: G3 vs G2", x = "G2", y = "G3") +
+  theme_minimal()
+
+p4 <- ggplot(por, aes(x = G1, y = G3)) +
+  geom_point(alpha = 0.55, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Portugués: G3 vs G1", x = "G1", y = "G3") +
+  theme_minimal()
+
+p5 <- ggplot(por, aes(x = G2, y = G3)) +
+  geom_point(alpha = 0.55, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Portugués: G3 vs failures", x = "failures", y = "G3") +
+  theme_minimal()
+
+p6 <- ggplot(por, aes(x = G1, y = G3)) +
+  geom_point(alpha = 0.55, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Portugués: G3 vs failures", x = "failures", y = "G3") +
+  theme_minimal()
+
+p7 <- ggplot(por, aes(x = G2, y = G3)) +
+  geom_point(alpha = 0.55, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Portugués: G3 vs studytime", x = "studytime", y = "G3") +
+  theme_minimal()
+
+p8 <- ggplot(por, aes(x = G1, y = G3)) +
+  geom_point(alpha = 0.55, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Portugués: G3 vs studytime", x = "studytime", y = "G3") +
+  theme_minimal()
+
+p9 <- ggplot(por, aes(x = G2, y = G3)) +
+  geom_point(alpha = 0.55, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Portugués: G3 vs absences", x = "absences", y = "G3") +
+  theme_minimal()
+
+p10 <- ggplot(por, aes(x = G1, y = G3)) +
+  geom_point(alpha = 0.55, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(title = "Portugués: G3 vs absences", x = "absences", y = "G3") +
+  theme_minimal()
+
+(p1 + p2) / (p3 + p4)/ (p5 + p6)/ (p7 + p8)/ (p9 + p10)
+```
+En la Figura \@ref(fig:dispersionMejores) se observa que las variables **G2** y **G1** presentan una relación lineal positiva fuerte con G3 en ambas asignaturas, evidenciada por la alineación de los puntos alrededor de la recta de regresión, lo que confirma su alto poder predictivo. En contraste, variables como **studytime** muestran una relación positiva pero con mayor dispersión. Por su parte, **failures** y **absences** presentan una mayor variabilidad en los datos y menor alineación con la tendencia lineal. 
+
+
+```{r comparacionModelos}
+resumen_modelos <- function(df, nombre_base) {
+  candidatos <- c("G2", "G1", "failures", "studytime", "absences")
+  map_dfr(candidatos, function(v) {
+    mod <- lm(as.formula(paste("G3 ~", v)), data = df)
+    tibble(
+      Base = nombre_base,
+      Predictor = v,
+      Correlacion = cor(df[[v]], df$G3),
+      R2 = summary(mod)$r.squared,
+      R2_Ajustado = summary(mod)$adj.r.squared,
+      RMSE = sigma(mod),
+      p_pendiente = broom::tidy(mod)$p.value[2]
+    )
+  }) |> arrange(desc(R2))
+}
+
+comparacion <- bind_rows(
+  resumen_modelos(mat, "Matemáticas"),
+  resumen_modelos(por, "Portugués")
+)
+
+knitr::kable(
+  comparacion,
+  caption = "Comparación de modelos lineales simples candidatos para cada asignatura.",
+  digits = 4,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 12
+  )
+```
+
+En la tabla \@ref(tab:comparacionModelos) se observa que G2 es la variable predictora con mayor explicabilidad, se probaron además transformaciones simples sobre la respuesta, como `sqrt(G3)` y `log(G3 + 1)`, con el propósito de revisar si mejoraban simultáneamente el ajuste y los supuestos. No obstante, dichas transformaciones redujeron el poder explicativo y no corrigieron de manera convincente la no normalidad residual. Por esa razón, el informe conserva el modelo en la escala original de **G3**, que además es la escala directamente interpretable para la toma de decisiones y la predicción en la aplicación.
+
+# Modelo de regresión lineal simple para modelar G3 para Matemáticas y Portugués
+
+```{r ajusteModelos}
+mod_mat <- lm(G3 ~ G2, data = mat)
+mod_por <- lm(G3 ~ G2, data = por)
+
+coeficientes_modelo <- function(mod, nombre_base) {
+  broom::tidy(mod, conf.int = TRUE) |>
+    mutate(Base = nombre_base) |>
+    select(Base, term, estimate, std.error, statistic, p.value, conf.low, conf.high)
+}
+
+tabla_coef <- bind_rows(
+  coeficientes_modelo(mod_mat, "Matemáticas"),
+  coeficientes_modelo(mod_por, "Portugués")
+)
+
+knitr::kable(
+  tabla_coef,
+  caption = "Coeficientes estimados, pruebas t e intervalos de confianza del 95%.",
+  digits = 4,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 12
+  )
+```
+
+```{r estadisticosModelo}
+pval_f <- function(mod) {
+  f <- summary(mod)$fstatistic
+  pf(f[1], f[2], f[3], lower.tail = FALSE)
+}
+
+resumen_global <- tibble(
+  Base = c("Matemáticas", "Portugués"),
+  Ecuacion = c(
+    paste0("G3 = ", round(coef(mod_mat)[1], 3), " + ", round(coef(mod_mat)[2], 3), "·G2"),
+    paste0("G3 = ", round(coef(mod_por)[1], 3), " + ", round(coef(mod_por)[2], 3), "·G2")
+  ),
+  `R²` = c(summary(mod_mat)$r.squared, summary(mod_por)$r.squared),
+  `R² ajustado` = c(summary(mod_mat)$adj.r.squared, summary(mod_por)$adj.r.squared),
+  `Error estándar residual` = c(sigma(mod_mat), sigma(mod_por)),
+  `F` = c(summary(mod_mat)$fstatistic[1], summary(mod_por)$fstatistic[1]),
+  `p valor F` = c(pval_f(mod_mat), pval_f(mod_por))
+)
+
+knitr::kable(
+  resumen_global,
+  caption = "Resumen del ajuste global de los modelos lineales simples seleccionados.",
+  digits = 4,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 12
+  )
+```
+
+Los resultados de las Tablas \@ref(tab:ajusteModelos) y \@ref(tab:estadisticosModelo) muestran en ambos casos que la pendiente es positiva, altamente significativa y muy cercana a uno. En Matemáticas, por cada punto adicional en **G2**, la nota final **G3** aumenta en promedio cerca de **1.10 puntos**; en Portugués el incremento promedio es de **1.02 puntos**. Además, el coeficiente de determinación es alto en ambas bases, lo que indica que la nota del segundo periodo explica una proporción muy importante de la variabilidad de la nota final.
+
+# Diagnóstico, atípicos e influencia
+
+```{r funcionesDiagnostico}
+diagnostico_modelo <- function(mod, nombre_base) {
+  tibble(
+    Base = nombre_base,
+    `Shapiro p-valor (Normalidad)` = shapiro.test(residuals(mod))$p.value,
+    `Breusch-Pagan p-valor (Homocedasticidad)` = lmtest::bptest(mod)$p.value,
+    `Durbin-Watson p-valor (Independencia)` = lmtest::dwtest(mod)$p.value,
+    `Durbin-Watson estadístico (Independencia)` = unname(lmtest::dwtest(mod)$statistic)
+  )
+}
+
+diagnosticos <- bind_rows(
+  diagnostico_modelo(mod_mat, "Matemáticas"),
+  diagnostico_modelo(mod_por, "Portugués")
+)
+
+# Transponer tabla
+diagnosticos_t <- diagnosticos |>
+  tidyr::pivot_longer(-Base, names_to = "Prueba", values_to = "Valor") |>
+  tidyr::pivot_wider(names_from = Base, values_from = Valor)
+
+knitr::kable(
+  diagnosticos_t,
+  caption = "Pruebas de diagnóstico del modelo según supuestos: normalidad, homocedasticidad e independencia.",
+  digits = 5,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 12
+  )
+```
+
+```{r graficosDiagnosticoMat, fig.width=11, fig.height=8, fig.cap="Diagnóstico gráfico de los modelos finales Matemáticas.", message=FALSE, warning=FALSE}
+plot_diag <- function(mod, nombre_base) {
+  datos_diag <- broom::augment(mod) |>
+    mutate(indice = row_number())
+
+  g_res <- ggplot(datos_diag, aes(x = .fitted, y = .resid)) +
+    geom_point(alpha = 0.65, color = "steelblue4") +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+    geom_smooth(se = FALSE, color = "black", method = "loess") +
+    labs(title = paste(nombre_base, "- Residuales vs ajustados"), x = "Ajustados", y = "Residuales") +
+    theme_minimal()
+
+  g_qq <- ggplot(datos_diag, aes(sample = .std.resid)) +
+    stat_qq(color = "darkgreen", alpha = 0.65) +
+    stat_qq_line(color = "red") +
+    labs(title = paste(nombre_base, "- QQ-plot residuales estandarizados")) +
+    theme_minimal()
+
+  g_scale <- ggplot(datos_diag, aes(x = .fitted, y = sqrt(abs(.std.resid)))) +
+    geom_point(alpha = 0.65, color = "purple4") +
+    geom_smooth(se = FALSE, color = "red", method = "loess") +
+    labs(title = paste(nombre_base, "- Scale-Location"), x = "Ajustados", y = expression(sqrt(abs(r[i])))) +
+    theme_minimal()
+
+  g_cook <- ggplot(datos_diag, aes(x = indice, y = .cooksd)) +
+    geom_col(fill = "grey50") +
+    geom_hline(yintercept = 4 / nrow(datos_diag), linetype = "dashed", color = "red") +
+    labs(title = paste(nombre_base, "- Distancia de Cook"), x = "Observación", y = "Cook") +
+    theme_minimal()
+
+  (g_res + g_qq) / (g_scale + g_cook)
+}
+plot_diag(mod_mat, "Matemáticas")
+```
+```{r graficosDiagnosticoPort, fig.width=11, fig.height=8, fig.cap="Diagnóstico gráfico de los modelos finales Portugués.", message=FALSE, warning=FALSE}
+
+plot_diag(mod_por, "Portugués")
+```
+
+```{r observacionesInfluyentes}
+resumen_influencia <- function(mod, nombre_base) {
+  infl <- broom::augment(mod) |>
+    mutate(
+      indice = row_number(),
+      leverage = hatvalues(mod),
+      student = rstudent(mod),
+      cook = cooks.distance(mod)
+    )
+
+  tibble(
+    Base = nombre_base,
+    `|Residuo studentizado| > 3` = sum(abs(infl$student) > 3),
+    `Cook > 4/n` = sum(infl$cook > 4 / nrow(infl)),
+    `Leverage > 2p/n` = sum(infl$leverage > (2 * 2) / nrow(infl)),
+    `Máxima distancia de Cook` = max(infl$cook)
+  )
+}
+
+influencia <- bind_rows(
+  resumen_influencia(mod_mat, "Matemáticas"),
+  resumen_influencia(mod_por, "Portugués")
+)
+
+knitr::kable(
+  influencia,
+  caption = "Resumen de observaciones atípicas o influyentes en los modelos finales.",
+  digits = 4,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 12
+  )
+```
+
+El diagnóstico deja tres ideas principales. Primero, la linealidad entre **G2** y **G3** es clara y explica buena parte de la variación en ambas asignaturas. Segundo, la normalidad de los errores no se cumple de manera estricta y la prueba de Breusch-Pagan sugiere heterocedasticidad leve a moderada. Tercero, existen observaciones influyentes, aunque la mayoría no alcanza valores extremos de Cook. Se ensayaron transformaciones y se estudió la influencia de observaciones atípicas, pero la mejora no compensó la pérdida de interpretabilidad. Por esto se mantuvo el modelo lineal simple en la escala original, dejando explícitas sus limitaciones.
+
+# Intervalos de confianza y predicciones
+
+```{r tablaPredicciones}
+prediccion_acotada <- function(modelo, nuevos_datos, limite_inf = 0, limite_sup = 20) {
+  pred <- predict(modelo, newdata = nuevos_datos)
+  pmin(pmax(pred, limite_inf), limite_sup)
+}
+
+intervalos_tabla <- function(mod, nombre_base) {
+  valores_g2 <- tibble(G2 = c(0, 5, 10, 15, 20))
+
+  ic_media <- predict(mod, newdata = valores_g2, interval = "confidence") |> as.data.frame()
+  ip_ind <- predict(mod, newdata = valores_g2, interval = "prediction") |> as.data.frame()
+
+  tibble(
+    Base = nombre_base,
+    G2 = valores_g2$G2,
+    Media_estimada = ic_media$fit,
+    Prediccion_acotada = prediccion_acotada(mod, valores_g2),
+    IC_media_inf = ic_media$lwr,
+    IC_media_sup = ic_media$upr,
+    IP_ind_inf = ip_ind$lwr,
+    IP_ind_sup = ip_ind$upr
+  )
+}
+
+predicciones_tabla <- bind_rows(
+  intervalos_tabla(mod_mat, "Matemáticas"),
+  intervalos_tabla(mod_por, "Portugués")
+)
+
+knitr::kable(
+  predicciones_tabla,
+  caption = "Predicciones puntuales, intervalos de confianza e intervalos de predicción para valores representativos de G2.",
+  digits = 3,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 11
+  )
+```
+
+```{r graficosPrediccion, fig.width=11, fig.height=4.5, message=FALSE, warning=FALSE, fig.cap="Predicción de G3 a partir de G2 con intervalo de confianza (naranja) e intervalo de predicción (gris) al 95%."}
+graf_pred <- function(df, mod, nombre_base, color_puntos) {
+  grilla <- tibble(G2 = seq(min(df$G2), max(df$G2), by = 0.1))
+  
+  ic_media <- predict(mod, newdata = grilla, interval = "confidence") |> as.data.frame()
+  ip_ind <- predict(mod, newdata = grilla, interval = "prediction") |> as.data.frame()
+  
+  grilla <- bind_cols(
+    grilla,
+    fit = ic_media$fit,
+    lwr_conf = ic_media$lwr,
+    upr_conf = ic_media$upr,
+    lwr_pred = ip_ind$lwr,
+    upr_pred = ip_ind$upr
+  )
+
+  ggplot(df, aes(x = G2, y = G3)) +
+    
+    # Puntos
+    geom_point(alpha = 0.5, color = color_puntos) +
+    
+    # Intervalo de predicción (más ancho, fondo)
+    geom_ribbon(
+      data = grilla,
+      aes(x = G2, ymin = lwr_pred, ymax = upr_pred),
+      fill = "gray60",
+      alpha = 0.25,
+      inherit.aes = FALSE
+    ) +
+    
+    # Intervalo de confianza (más visible)
+    geom_ribbon(
+      data = grilla,
+      aes(x = G2, ymin = lwr_conf, ymax = upr_conf),
+      fill = "orange",
+      alpha = 0.45,
+      inherit.aes = FALSE
+    ) +
+    
+    # Bordes del intervalo de confianza (esto lo hace MUCHO más claro 👀)
+    geom_line(
+      data = grilla,
+      aes(x = G2, y = lwr_conf),
+      color = "darkorange",
+      linetype = "dashed",
+      linewidth = 0.7,
+      inherit.aes = FALSE
+    ) +
+    
+    geom_line(
+      data = grilla,
+      aes(x = G2, y = upr_conf),
+      color = "darkorange",
+      linetype = "dashed",
+      linewidth = 0.7,
+      inherit.aes = FALSE
+    ) +
+    
+    # Línea de predicción
+    geom_line(
+      data = grilla,
+      aes(x = G2, y = fit),
+      color = "firebrick",
+      linewidth = 1.2,
+      inherit.aes = FALSE
+    ) +
+    
+    labs(
+      title = paste("Modelo final -", nombre_base),
+      subtitle = "Gris: intervalo de predicción | Naranja: intervalo de confianza",
+      x = "Nota del segundo periodo (G2)",
+      y = "Nota final (G3)"
+    ) +
+    
+    theme_minimal(base_size = 12)
+}
+
+graf_pred(mat, mod_mat, "Matemáticas", "steelblue4") +
+  graf_pred(por, mod_por, "Portugués", "darkgreen")
+```
+
+La tabla \@ref(tab:tablaPredicciones) muestra dos aspectos distintos. El **intervalo de confianza para la media** describe la nota media esperada de estudiantes con un valor específico de **G2**, mientras que el **intervalo de predicción** es más ancho porque incorpora la variabilidad individual. Además, para fines operativos de la aplicación se propone el módulo `prediccion_acotada()`, que recorta las salidas al rango real de la escala de notas **[0, 20]**. Este ajuste es razonable porque **G3** no puede ser menor que 0 ni mayor que 20, y evita predicciones imposibles en los extremos, especialmente en Matemáticas cuando **G2** es muy bajo.
+
+# Discusión y conclusiones
+
+El análisis confirma que **G2 es el predictor cuantitativo más promisorio de G3** tanto en Matemáticas como en Lengua Portuguesa, mientras que **G1** ocupa consistentemente el segundo lugar. Esta evidencia muestra que el desempeño previo es el mejor resumen del rendimiento final. Esta conclusión es valiosa porque permite construir un modelo lineal simple fuerte, interpretable y directamente utilizable en una aplicación productiva, aunque no cumpla los supuestos al 100%.
+
+En Matemáticas, el modelo explica alrededor del **81.9%** de la variabilidad de G3; en Portugués explica aproximadamente **84.4%**. Las pendientes son positivas y altamente significativas en ambos casos, de modo que el comportamiento de la nota final sigue muy de cerca la nota del segundo periodo. Esto no significa que otras variables carezcan de interés, sino que, bajo la restricción metodológica de usar una sola variable cuantitativa, **G2 domina claramente a las demás**.
+
+Respecto a los supuestos, el modelo presenta una situación típica en datos educativos con calificaciones discretas y acotadas: el ajuste lineal es muy bueno, pero la normalidad residual no se cumple estrictamente. Aún así el modelo es cercano y puede ser usado. Se revisaron transformaciones y se estudió la influencia de observaciones atípicas; sin embargo, el modelo original en escala natural fue el más conveniente por equilibrio entre ajuste, interpretación y uso práctico.
+
+Por tanto, el modelo final recomendado es:
+
+- **Matemáticas:** `G3 = -1.393 + 1.102·G2`
+- **Portugués:** `G3 = 0.122 + 1.018·G2`
+
+Asimismo, conviene implementar la predicción acotada al rango **0–20** para no tener valores inadecuados de predicción.
+
+# Referencias
+
+- Cortez, P., & Silva, A. (2008). *Using Data Mining to Predict Secondary School Student Performance*.
+- UCI Machine Learning Repository. *Student Performance Data Set*.
+- Material del curso *Métodos y Simulación Estadística*, Unidad 3, regresión lineal simple.
+
+# Anexos
+
+## Anexo A. Código auxiliar para comparar transformaciones
+
+```{r transformacionesAnexo}
+comparar_transformaciones <- function(df) {
+  mod_raw  <- lm(G3 ~ G2, data = df)
+  mod_sqrt <- lm(sqrt(G3) ~ G2, data = df)
+  mod_log  <- lm(log(G3 + 1) ~ G2, data = df)
+
+  tibble(
+    Modelo = c("G3 ~ G2", "sqrt(G3) ~ G2", "log(G3 + 1) ~ G2"),
+    R2 = c(summary(mod_raw)$r.squared, summary(mod_sqrt)$r.squared, summary(mod_log)$r.squared),
+    Shapiro_p = c(shapiro.test(residuals(mod_raw))$p.value,
+                  shapiro.test(residuals(mod_sqrt))$p.value,
+                  shapiro.test(residuals(mod_log))$p.value),
+    BP_p = c(lmtest::bptest(mod_raw)$p.value,
+             lmtest::bptest(mod_sqrt)$p.value,
+             lmtest::bptest(mod_log)$p.value)
+  )
+}
+
+knitr::kable(
+  bind_rows(
+    comparar_transformaciones(mat) |> mutate(Base = "Matemáticas"),
+    comparar_transformaciones(por) |> mutate(Base = "Portugués")
+  ) |> select(Base, everything()),
+  caption = "Comparación exploratoria entre la escala original y transformaciones simples de la respuesta.",
+  digits = 5,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 11
+  )
+```
+
+## Anexo B. Código para identificar observaciones influyentes
+
+```{r detalleInfluencia}
+detalle_influencia <- function(mod, nombre_base, n_mostrar = 10) {
+  broom::augment(mod) |>
+    mutate(
+      indice = row_number(),
+      leverage = hatvalues(mod),
+      student = rstudent(mod),
+      cook = cooks.distance(mod)
+    ) |>
+    arrange(desc(cook)) |>
+    select(indice, .fitted, .resid, leverage, student, cook) |>
+    slice_head(n = n_mostrar) |>
+    mutate(Base = nombre_base) |>
+    select(Base, everything())
+}
+
+knitr::kable(
+  bind_rows(
+    detalle_influencia(mod_mat, "Matemáticas"),
+    detalle_influencia(mod_por, "Portugués")
+  ),
+  caption = "Observaciones con mayor distancia de Cook en cada modelo.",
+  digits = 4,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 10
+  )
+```
+
