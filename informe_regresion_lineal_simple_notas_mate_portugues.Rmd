@@ -1,0 +1,396 @@
+---
+title: "Actividad 3 - Regresión lineal simple para predecir G3"
+subtitle: "Métodos y Simulación Estadística - Maestría en Ciencia de Datos"
+author: "Victor Hugo Perilla Martinez"
+date: "`r Sys.Date()`"
+output:
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    theme: cosmo
+    code_folding: hide
+lang: es
+encoding: UTF-8
+---
+# Índice
+
+1. Índice
+2. Descripción del problema
+3. Carga, estructura y preparación de los datos
+4. Exploración inicial y selección de predictores
+5. Ajuste del modelo final para Matemáticas y Portugués
+6. Diagnóstico, atípicos e influencia
+7. Intervalos de confianza y predicciones
+8. Discusión y conclusiones
+9. Referencias
+10. Anexos
+
+# Descripción del problema
+
+La actividad plantea ajustar dos modelos de regresión lineal simple, con el objetivo de predecir la nota final **G3** a partir de una sola variable cuantitativa, uno para Matemáticas y otro para Lengua Portuguesa. El informe debe incluir exploración, ajuste, pruebas *t* y *F*, coeficiente de determinación, revisión de supuestos, detección de observaciones atípicas o influyentes, intervalos de confianza y predicciones, en concordancia con la guía de la actividad propuesta.
+
+El conjunto de datos corresponde al estudio *Student Performance in Secondary Education*. El artículo base señala que **G3 es la calificación final**, para este análisis tomaremos en cuenta las posibles opciones de variable predictora cuantitativa para una regresión lineal simple, como lo pueden ser notas previas **G1** y **G2**, cantidad de ausencias, historial de pérdidas, factores familiares u otras.
+
+# Carga, estructura y preparación de los datos
+
+```{r librerias, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+paquetes <- c(
+  "ggplot2", "dplyr", "tidyr", "tibble", "purrr", "readr", "knitr",
+  "kableExtra", "bookdown", "patchwork", "lmtest", "car", "broom",
+  "GGally", "scales", "stringr"
+)
+
+for (p in paquetes) {
+  if (!require(p, character.only = TRUE)) {
+    install.packages(p, repos = "https://cloud.r-project.org")
+    library(p, character.only = TRUE)
+  } else {
+    library(p, character.only = TRUE)
+  }
+}
+```
+
+```{r carga_datos}
+mat <- read.csv("datos/student-mat.csv", sep = ";", stringsAsFactors = FALSE)
+por <- read.csv("datos/student-por.csv", sep = ";", stringsAsFactors = FALSE)
+
+variables_numericas <- c(
+  "age", "Medu", "Fedu", "traveltime", "studytime", "failures", "famrel",
+  "freetime", "goout", "Dalc", "Walc", "health", "absences", "G1", "G2", "G3"
+)
+
+mat_num <- mat |> dplyr::select(all_of(variables_numericas))
+por_num <- por |> dplyr::select(all_of(variables_numericas))
+
+resumen_estructura <- tibble(
+  Base = c("Matemáticas", "Portugués"),
+  Observaciones = c(nrow(mat), nrow(por)),
+  Variables = c(ncol(mat), ncol(por)),
+  Variables_numéricas = c(ncol(mat_num), ncol(por_num)),
+  Faltantes_totales = c(sum(is.na(mat)), sum(is.na(por)))
+)
+
+knitr::kable(
+  resumen_estructura,
+  caption = "Estructura general de las bases de datos utilizadas.",
+  digits = 0,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 12
+  )
+```
+
+Las dos bases conservan la misma estructura de 33 columnas y no presentan valores faltantes. Esto simplifica el proceso, ya que no fue necesario imputar ni eliminar registros por ausencia de información. Para el análisis de regresión lineal simple solo se consideran las variables cuantitativas, pues la actividad excluye predictores cualitativos.
+
+```{r diccionario_variables}
+diccionario <- tibble(
+  Variable = c(
+    "age", "Medu", "Fedu", "traveltime", "studytime", "failures", "famrel",
+    "freetime", "goout", "Dalc", "Walc", "health", "absences", "G1", "G2", "G3"
+  ),
+  Descripcion = c(
+    "Edad del estudiante",
+    "Escolaridad de la madre",
+    "Escolaridad del padre",
+    "Tiempo de desplazamiento al colegio",
+    "Tiempo semanal de estudio",
+    "Número de cursos reprobados previamente",
+    "Calidad de las relaciones familiares",
+    "Tiempo libre después de clase",
+    "Frecuencia de salidas con amigos",
+    "Consumo de alcohol entre semana",
+    "Consumo de alcohol en fin de semana",
+    "Estado de salud actual",
+    "Número de ausencias",
+    "Nota del primer periodo",
+    "Nota del segundo periodo",
+    "Nota final"
+  ),
+  Tipo = c(rep("Cuantitativa", 16))
+)
+
+knitr::kable(
+  diccionario,
+  caption = "Variables cuantitativas consideradas en el análisis.",
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 12
+  ) |>
+  kableExtra::scroll_box(height = "320px")
+```
+
+```{r descriptivos_g3}
+resumen_principal <- tibble(
+  Base = c("Matemáticas", "Portugués"),
+
+  Media = c(mean(mat$G3), mean(por$G3)),
+  Mediana = c(median(mat$G3), median(por$G3)),
+  DE = c(sd(mat$G3), sd(por$G3)),
+  CV = c(sd(mat$G3) / mean(mat$G3) * 100,
+         sd(por$G3) / mean(por$G3) * 100),
+
+  Min = c(min(mat$G3), min(por$G3)),
+  P10 = c(quantile(mat$G3, 0.10), quantile(por$G3, 0.10)),
+  Q1 = c(quantile(mat$G3, 0.25), quantile(por$G3, 0.25)),
+  Q2 = c(quantile(mat$G3, 0.50), quantile(por$G3, 0.50)),
+  Q3 = c(quantile(mat$G3, 0.75), quantile(por$G3, 0.75)),
+  P90 = c(quantile(mat$G3, 0.90), quantile(por$G3, 0.90)),
+  Max = c(max(mat$G3), max(por$G3)),
+
+  IQR = c(IQR(mat$G3), IQR(por$G3)),
+
+  Lim_inf_outlier = c(
+    quantile(mat$G3, 0.25) - 1.5 * IQR(mat$G3),
+    quantile(por$G3, 0.25) - 1.5 * IQR(por$G3)
+  ),
+  Lim_sup_outlier = c(
+    quantile(mat$G3, 0.75) + 1.5 * IQR(mat$G3),
+    quantile(por$G3, 0.75) + 1.5 * IQR(por$G3)
+  ),
+
+  Outliers_bajos = c(
+    sum(mat$G3 < (quantile(mat$G3, 0.25) - 1.5 * IQR(mat$G3))),
+    sum(por$G3 < (quantile(por$G3, 0.25) - 1.5 * IQR(por$G3)))
+  ),
+  Outliers_altos = c(
+    sum(mat$G3 > (quantile(mat$G3, 0.75) + 1.5 * IQR(mat$G3))),
+    sum(por$G3 > (quantile(por$G3, 0.75) + 1.5 * IQR(por$G3)))
+  ),
+  Outliers_total = c(
+    sum(mat$G3 < (quantile(mat$G3, 0.25) - 1.5 * IQR(mat$G3)) |
+          mat$G3 > (quantile(mat$G3, 0.75) + 1.5 * IQR(mat$G3))),
+    sum(por$G3 < (quantile(por$G3, 0.25) - 1.5 * IQR(por$G3)) |
+          por$G3 > (quantile(por$G3, 0.75) + 1.5 * IQR(por$G3)))
+  )
+)
+
+knitr::kable(
+  resumen_principal,
+  caption = "Resumen descriptivo ampliado de la variable G3, incluyendo medidas de tendencia central, dispersión, posición y detección de valores atípicos.",
+  digits = 2,
+  format = "html"
+) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "bordered"),
+    full_width = FALSE,
+    font_size = 11
+  ) |>
+  kableExtra::scroll_box(width = "100%", height = "320px")
+```
+
+```{r distribucion_g3, fig.width=10, fig.height=4.5, fig.cap="Distribución de la nota final G3 en Matemáticas y Portugués con densidad, tendencia central y límites de outliers."}
+
+# Estadísticos Matemáticas
+media_mat <- mean(mat$G3)
+mediana_mat <- median(mat$G3)
+q1_mat <- quantile(mat$G3, 0.25)
+q3_mat <- quantile(mat$G3, 0.75)
+iqr_mat <- IQR(mat$G3)
+lim_inf_mat <- q1_mat - 1.5 * iqr_mat
+lim_sup_mat <- q3_mat + 1.5 * iqr_mat
+
+# Estadísticos Portugués
+media_por <- mean(por$G3)
+mediana_por <- median(por$G3)
+q1_por <- quantile(por$G3, 0.25)
+q3_por <- quantile(por$G3, 0.75)
+iqr_por <- IQR(por$G3)
+lim_inf_por <- q1_por - 1.5 * iqr_por
+lim_sup_por <- q3_por + 1.5 * iqr_por
+
+
+# Gráfico Matemáticas
+g1 <- ggplot(mat, aes(x = G3)) +
+  geom_histogram(aes(y = after_stat(density)), 
+                 binwidth = 1, fill = "steelblue", 
+                 color = "white", alpha = 0.7) +
+  geom_density(color = "blue", linewidth = 1.2, alpha = 0.4) +
+  geom_vline(xintercept = media_mat, linetype = "dashed", color = "black", linewidth = 1) +
+  geom_vline(xintercept = mediana_mat, linetype = "solid", color = "black", linewidth = 1) +
+  geom_vline(xintercept = lim_inf_mat, linetype = "dotted", color = "red", linewidth = 1) +
+  geom_vline(xintercept = lim_sup_mat, linetype = "dotted", color = "red", linewidth = 1) +
+  labs(title = "Matemáticas",
+       subtitle = "Media (---), Mediana (—), Outliers (···)",
+       x = "G3", y = "Densidad") +
+  theme_minimal()
+
+
+# Gráfico Portugués
+g2 <- ggplot(por, aes(x = G3)) +
+  geom_histogram(aes(y = after_stat(density)), 
+                 binwidth = 1, fill = "darkseagreen4", 
+                 color = "white", alpha = 0.7) +
+  geom_density(color = "darkgreen", linewidth = 1.2, alpha = 0.4) +
+  geom_vline(xintercept = media_por, linetype = "dashed", color = "black", linewidth = 1) +
+  geom_vline(xintercept = mediana_por, linetype = "solid", color = "black", linewidth = 1) +
+  geom_vline(xintercept = lim_inf_por, linetype = "dotted", color = "red", linewidth = 1) +
+  geom_vline(xintercept = lim_sup_por, linetype = "dotted", color = "red", linewidth = 1) +
+  labs(title = "Portugués",
+       subtitle = "Media (---), Mediana (—), Outliers (···)",
+       x = "G3", y = "Densidad") +
+  theme_minimal()
+
+g1 + g2
+```
+
+Las distribuciones de G3 muestran una variable discreta, acotada entre 0 y 20, con mayor concentración en valores intermedios y altos. Este rasgo es importante desde el inicio porque anticipa que la normalidad de los errores puede no cumplirse de manera perfecta, incluso cuando el ajuste lineal sea fuerte. También se observa outliers en portugués y una gran cantidad de notas 0 para matemáticas. 
+
+# Exploración inicial y selección de predictores
+
+Para seleccionar la variable explicativa se calcularon correlaciones de Pearson y Spearman entre **G3** y todas las variables cuantitativas disponibles. Se privilegió la correlación de Pearson por ser coherente con el enfoque lineal del curso, pero también se revisó Spearman como contraste de robustez frente a la naturaleza ordinal de varias covariables.
+
+No se utiliza Kendall porque los predictores principales son cuantitativos y el tamaño muestral es grande, por lo que Pearson y Spearman son suficientes para el análisis.
+
+```{r tabla_visual_g3_mat, fig.width=14, fig.height=30, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(purrr)
+library(grid)
+library(gridExtra)
+
+# Variables cuantitativas predictoras
+vars_y <- c(
+  "age", "Medu", "Fedu", "traveltime", "studytime", "failures", "famrel",
+  "freetime", "goout", "Dalc", "Walc", "health", "absences", "G1", "G2"
+)
+
+# Función para asteriscos
+signif_stars <- function(p) {
+  if (is.na(p)) {
+    ""
+  } else if (p < 0.001) {
+    "***"
+  } else if (p < 0.01) {
+    "**"
+  } else if (p < 0.05) {
+    "*"
+  } else {
+    ""
+  }
+}
+
+# Resumen de correlaciones para ordenar
+tabla_corr <- tibble(variable = vars_y) |>
+  mutate(
+    pearson = map_dbl(variable, ~ cor(mat[[.x]], mat$G3, method = "pearson", use = "complete.obs")),
+    spearman = map_dbl(variable, ~ cor(mat[[.x]], mat$G3, method = "spearman", use = "complete.obs")),
+    abs_pearson = abs(pearson),
+    p_pearson = map_dbl(variable, ~ cor.test(mat[[.x]], mat$G3, method = "pearson")$p.value),
+    p_spearman = map_dbl(variable, ~ cor.test(mat[[.x]], mat$G3, method = "spearman", exact = FALSE)$p.value)
+  ) |>
+  arrange(desc(abs_pearson))
+
+# Función para construir cada fila
+crear_fila <- function(var_name, pearson, spearman, p_pearson, p_spearman) {
+  
+  datos_var <- tibble(
+    G3 = mat$G3,
+    variable = mat[[var_name]]
+  )
+  
+  # Columna 1: Scatter G3 vs variable
+  p_scatter <- ggplot(datos_var, aes(x = variable, y = G3)) +
+    geom_point(alpha = 0.30, size = 0.9, color = "gray30") +
+    geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5) +
+    labs(
+      title = paste0("Scatter G3 vs ",var_name),
+      x = var_name,
+      y = "G3"
+    ) +
+    theme_minimal(base_size = 9) +
+    theme(
+      plot.title = element_text(size = 9, face = "bold", hjust = 0.5),
+      axis.title = element_text(size = 8),
+      axis.text = element_text(size = 7)
+    )
+  
+  # Columna 2: Distribución de la variable
+  p_dist <- ggplot(datos_var, aes(x = variable)) +
+    geom_histogram(aes(y = after_stat(density)),
+                   bins = 15, fill = "steelblue", color = "white", alpha = 0.75) +
+    geom_density(color = "darkblue", linewidth = 0.6, alpha = 0.6) +
+    labs(
+      title = paste0("Distribucion variable",var_name),
+      x = var_name,
+      y = "Densidad"
+    ) +
+    theme_minimal(base_size = 9) +
+    theme(
+      plot.title = element_text(size = 9, face = "bold", hjust = 0.5),
+      axis.title = element_text(size = 8),
+      axis.text = element_text(size = 7)
+    )
+  
+  # Columna 3: Texto de correlaciones
+  texto_corr <- paste0(
+    "Pearson: ", sprintf("%.3f", pearson), signif_stars(p_pearson), "\n",
+    "Spearman: ", sprintf("%.3f", spearman), signif_stars(p_spearman)
+  )
+  
+  p_corr <- ggplot() +
+    annotate("text", x = 0.5, y = 0.5, label = texto_corr,
+             size = 4.2, hjust = 0.5, vjust = 0.5, lineheight = 1.1) +
+    xlim(0, 1) + ylim(0, 1) +
+    theme_void() +
+    labs(title = paste0("Correlacion entre G3 y ", var_name)) +
+    theme(
+      plot.title = element_text(size = 9, face = "bold", hjust = 0.5)
+    )
+  
+
+  
+  p_scatter + p_dist + p_corr +  plot_layout(widths = c(3.2, 2.6, 1.8))
+}
+
+# Crear todas las filas
+filas_plots <- pmap(
+  list(
+    tabla_corr$variable,
+    tabla_corr$pearson,
+    tabla_corr$spearman,
+    tabla_corr$p_pearson,
+    tabla_corr$p_spearman
+  ),
+  crear_fila
+)
+
+# Encabezado general
+header1 <- ggplot() +
+  annotate("text", x = 0.5, y = 0.5, label = "G3 scatter vs variable",
+           size = 4, fontface = "bold") +
+  xlim(0, 1) + ylim(0, 1) + theme_void()
+
+header2 <- ggplot() +
+  annotate("text", x = 0.5, y = 0.5, label = "Distribucion variable",
+           size = 4, fontface = "bold") +
+  xlim(0, 1) + ylim(0, 1) + theme_void()
+
+header3 <- ggplot() +
+  annotate("text", x = 0.5, y = 0.5, label = "Correlacion\nPearson y Spearman",
+           size = 4, fontface = "bold") +
+  xlim(0, 1) + ylim(0, 1) + theme_void()
+
+
+encabezado <- header1 + header2 + header3  +
+  plot_layout(widths = c(3.2, 2.6, 1.8))
+
+# Unir encabezado + filas
+grafico_final <- wrap_plots(c(list(encabezado), filas_plots), ncol = 1) +
+  plot_annotation(
+    title = "Tabla visual de seleccion de predictores para G3 - Matematicas",
+    theme = theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+    )
+  )
+
+grafico_final
+```
