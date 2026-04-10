@@ -18,7 +18,7 @@ encoding: UTF-8
 
 1. Índice
 2. Exploración de datos
-3. Ajuste del modelo final para Matemáticas y Portugués
+3. Modelo de regresión lineal simple para modelar G3 para Matemáticas y Portugués
 4. Análisis Diagnóstico
 5. Análisis Atípicos e influencia
 6. Intervalos de confianza y predicciones
@@ -28,9 +28,7 @@ encoding: UTF-8
 
 # Exploración de datos
 
-## Descripción del problema
-
-La actividad plantea ajustar dos modelos de regresión lineal simple, con el objetivo de predecir la nota final **G3** a partir de una sola variable cuantitativa, uno para Matemáticas y otro para Lengua Portuguesa.
+Se requiere ajustar dos modelos de regresión lineal simple, con el objetivo de predecir la nota final **G3** a partir de una sola variable cuantitativa, uno para Matemáticas y otro para Lengua Portuguesa.
 
 ## Carga, estructura y preparación de los datos
 
@@ -38,7 +36,8 @@ La actividad plantea ajustar dos modelos de regresión lineal simple, con el obj
 paquetes <- c(
   "ggplot2", "dplyr", "tidyr", "tibble", "purrr", "readr", "knitr",
   "kableExtra", "bookdown", "patchwork", "lmtest", "car", "broom",
-  "GGally", "scales", "stringr", "grid", "gridExtra", "tidyverse","e1071"
+  "GGally", "scales", "stringr", "grid", "gridExtra", "tidyverse","e1071",
+  "MASS"
 )
 
 for (p in paquetes) {
@@ -193,15 +192,17 @@ knitr::kable(
   ) |>
   kableExtra::scroll_box(width = "100%", height = "100%")
 ```
- En la Tabla \@ref(tab:descriptivos) evidencia que la variable respuesta **G3** presenta una distribución con asimetría negativa en ambas asignaturas, indicando concentración en calificaciones altas. En Matemáticas se observa mayor dispersión (CV ≈ 44%) respecto a Portugués (CV ≈ 27%), lo que sugiere mayor dificultad de predicción en la primera.
+En la Tabla \@ref(tab:descriptivos) se evidencia que la variable respuesta **G3** presenta asimetría negativa en ambas asignaturas, lo que indica concentración de observaciones en calificaciones medias y altas. Además, en Matemáticas se observa mayor dispersión relativa (CV ≈ 44%) que en Portugués (CV ≈ 27%), sugiriendo una respuesta más variable y, por tanto, potencialmente más difícil de predecir.
 
 En cuanto a valores atípicos, no se identifican en Matemáticas, mientras que en Portugués existen outliers bajos, lo cual puede afectar la estimación de modelos lineales y deberá considerarse en el análisis de residuos.
 
 Respecto a las variables predictoras, se identifican como poco informativas aquellas con alta dispersión relativa o baja variabilidad efectiva, como **absences**, **health**, **freetime**, **goout** y **famrel**, las cuales presentan distribuciones altamente sesgadas o concentradas que limitan su capacidad explicativa.
 
-Por el contrario, variables como **G2** y **G1** muestran una estructura consistente con la variable respuesta, lo que puede permitir obtener buena información de estas variables, esto también confirma la evidencia del artículo base. Asimismo, variables como **studytime** y el nivel educativo de los padres (**Medu**, **Fedu**) presentan coherencia teórica y estabilidad estadística, por lo que se pueden también ser buenas variables para tener en cuenta.
+Por el contrario, variables como **G2** y **G1** muestran un patrón más consistente con la variable respuesta, por lo que resultan candidatas naturales para el ajuste del modelo. Asimismo, variables como **studytime** y el nivel educativo de los padres (**Medu**, **Fedu**) conservan interés teórico y cierta estabilidad estadística, aunque con menor capacidad explicativa que las calificaciones previas.
 
-La demás variables podrían aportar información, pero su inclusión en un modelo lineal simple podria nos er tan robusto.
+En conjunto, las demás variables podrían aportar información complementaria, pero su uso como único predictor en un modelo lineal simple sería menos robusto que el de **G2** o **G1**, tanto por su menor asociación con la respuesta como por su patrón distributivo menos favorable.
+
+A partir de esta exploración descriptiva y de la comparación entre variables cuantitativas, el siguiente paso consiste en evaluar formalmente la asociación entre **G3** y cada predictor potencial, con el fin de seleccionar la variable que ofrezca mayor capacidad explicativa dentro de la restricción metodológica de usar una sola covariable cuantitativa.
 
 ```{r distribucionG3, fig.width=10, fig.height=4.5, fig.cap="Distribución de la nota final G3 en Matemáticas y Portugués con densidad, tendencia central y límites de outliers."}
 
@@ -257,9 +258,9 @@ g2 <- ggplot(por, aes(x = G3)) +
 
 g1 + g2
 ```
-En la Figura \@ref(fig:distribucionG3) las distribuciones de G3 muestran una variable discreta, acotada entre 0 y 20, con mayor concentración en valores intermedios y altos. Este rasgo es importante desde el inicio porque anticipa que la normalidad de los errores puede no cumplirse de manera perfecta, incluso cuando el ajuste lineal sea fuerte. También se observa outliers en portugués y una gran cantidad de notas 0 para matemáticas.
+En la Figura \@ref(fig:distribucionG3), la variable **G3** se observa discreta y acotada entre 0 y 20, con concentración en valores intermedios y altos. Este rasgo es importante porque anticipa que la normalidad de los errores podría no cumplirse de forma estricta, incluso si la relación lineal con el predictor resultara fuerte. Además, se aprecian valores atípicos bajos en Portugués y presencia visible de notas muy bajas, incluidos algunos ceros, en Matemáticas.
 
-Para seleccionar la variable explicativa se calcularon correlaciones de Pearson y Spearman entre **G3** y todas las variables cuantitativas disponibles. Se privilegió la correlación de Pearson por ser coherente con el enfoque lineal, pero también se revisó Spearman como contraste de robustez frente a la naturaleza ordinal de varias covariables.
+Para seleccionar la variable explicativa se calcularon correlaciones de Pearson y Spearman entre **G3** y todas las variables cuantitativas disponibles. Se priorizó Pearson por su coherencia con el objetivo de ajustar una regresión lineal simple, mientras que Spearman se utilizó como contraste de robustez, dado que varias covariables provienen de escalas discretas u ordinales.
 
 ```{r tablaVisualG3Mat, fig.width=14, fig.height=30, message=FALSE, warning=FALSE,  fig.cap="Tabla visual de seleccion de predictores para G3 - Matematicas"}
 # Variables cuantitativas predictoras
@@ -522,7 +523,9 @@ grafico_final <- wrap_plots(c(list(encabezado), filas_plots), ncol = 1) +
 grafico_final
 ```
 
-En las Figuras \@ref(fig:tablaVisualG3Mat) y \@ref(fig:tablaVisualG3Port) muestran que **G2** es la variable más asociada con **G3** en ambas asignaturas, seguida de **G1**. En Matemáticas, la correlación de Pearson entre G2 y G3 es cercana a 0.905; en Portugués es aproximadamente 0.919. Por tanto, para el modelo final se selecciona **G2** como predictor principal y se conserva **G1** como segunda mejor alternativa. Los candidatos par iteración fueron **G2**, **G1**, **failures**,**studytime**, **absences**.
+Las Figuras \@ref(fig:tablaVisualG3Mat) y \@ref(fig:tablaVisualG3Port) muestran que **G2** es la variable más asociada con **G3** en ambas asignaturas, seguida de **G1**. En Matemáticas, la correlación de Pearson entre **G2** y **G3** es cercana a 0.905, mientras que en Portugués es aproximadamente 0.919. En consecuencia, **G2** se selecciona como predictor principal del modelo final y **G1** se conserva como segunda alternativa útil para la aplicación. Como candidatos principales para comparación se consideraron **G2**, **G1**, **failures**, **studytime** y **absences**.
+
+Con base en esta selección, se ajustan a continuación dos modelos de regresión lineal simple, uno para Matemáticas y otro para Portugués, ambos con **G3** como respuesta y **G2** como predictor.
 
 
 ```{r dispersionMejores, fig.width=11, fig.height=8, fig.cap="Relación de G3 con los mejores predictores cuantitativos en cada asignatura.", message=FALSE, warning=FALSE}
@@ -550,40 +553,40 @@ p4 <- ggplot(por, aes(x = G1, y = G3)) +
   labs(title = "Portugués: G3 vs G1", x = "G1", y = "G3") +
   theme_minimal()
 
-p5 <- ggplot(por, aes(x = G2, y = G3)) +
+p5 <- ggplot(por, aes(x = failures, y = G3)) +
   geom_point(alpha = 0.55, color = "darkgreen") +
   geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
   labs(title = "Portugués: G3 vs failures", x = "failures", y = "G3") +
   theme_minimal()
 
-p6 <- ggplot(por, aes(x = G1, y = G3)) +
+p6 <- ggplot(mat, aes(x = failures, y = G3)) +
   geom_point(alpha = 0.55, color = "darkgreen") +
   geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
-  labs(title = "Portugués: G3 vs failures", x = "failures", y = "G3") +
+  labs(title = "Matemáticas: G3 vs failures", x = "failures", y = "G3") +
   theme_minimal()
 
-p7 <- ggplot(por, aes(x = G2, y = G3)) +
+p7 <- ggplot(por, aes(x = studytime, y = G3)) +
   geom_point(alpha = 0.55, color = "darkgreen") +
   geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
   labs(title = "Portugués: G3 vs studytime", x = "studytime", y = "G3") +
   theme_minimal()
 
-p8 <- ggplot(por, aes(x = G1, y = G3)) +
+p8 <- ggplot(mat, aes(x = studytime, y = G3)) +
   geom_point(alpha = 0.55, color = "darkgreen") +
   geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
-  labs(title = "Portugués: G3 vs studytime", x = "studytime", y = "G3") +
+  labs(title = "Matemáticas: G3 vs studytime", x = "studytime", y = "G3") +
   theme_minimal()
 
-p9 <- ggplot(por, aes(x = G2, y = G3)) +
+p9 <- ggplot(por, aes(x = absences, y = G3)) +
   geom_point(alpha = 0.55, color = "darkgreen") +
   geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
   labs(title = "Portugués: G3 vs absences", x = "absences", y = "G3") +
   theme_minimal()
 
-p10 <- ggplot(por, aes(x = G1, y = G3)) +
+p10 <- ggplot(mat, aes(x = absences, y = G3)) +
   geom_point(alpha = 0.55, color = "darkgreen") +
   geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
-  labs(title = "Portugués: G3 vs absences", x = "absences", y = "G3") +
+  labs(title = "Matemáticas: G3 vs absences", x = "absences", y = "G3") +
   theme_minimal()
 
 (p1 + p2) / (p3 + p4)/ (p5 + p6)/ (p7 + p8)/ (p9 + p10)
@@ -626,7 +629,7 @@ knitr::kable(
   )
 ```
 
-En la tabla \@ref(tab:comparacionModelos) se observa que G2 es la variable predictora con mayor explicabilidad, se probaron además transformaciones simples sobre la respuesta, como `sqrt(G3)` y `log(G3 + 1)`, con el propósito de revisar si mejoraban simultáneamente el ajuste y los supuestos. No obstante, dichas transformaciones redujeron el poder explicativo y no corrigieron de manera convincente la no normalidad residual. Por esa razón, el informe conserva el modelo en la escala original de **G3**, que además es la escala directamente interpretable para la toma de decisiones y la predicción en la aplicación.
+En la tabla \@ref(tab:comparacionModelos) se observa que G2 es la variable predictora con mayor explicabilidad, se probaron además transformaciones como `sqrt(G3)`, `log(G3 + 1)` entre otros, y una experimentación con polinomios también de forma académica, esto con el propósito de revisar si mejoraban simultáneamente el ajuste y los supuestos. No obstante, dichas transformaciones redujeron el poder explicativo y no corrigieron de manera convincente la no normalidad residual. Por esa razón, el informe conserva el modelo en la escala original de **G3**, que además es la escala directamente interpretable para la toma de decisiones y la predicción en la aplicación. (ver anexos)
 
 # Modelo de regresión lineal simple para modelar G3 para Matemáticas y Portugués
 
@@ -636,11 +639,13 @@ mod_por <- lm(G3 ~ G2, data = por)
 
 coeficientes_modelo <- function(mod, nombre_base) {
   broom::tidy(mod, conf.int = TRUE) |>
-    mutate(Base = nombre_base) |>
-    select(Base, term, estimate, std.error, statistic, p.value, conf.low, conf.high)
+    dplyr::mutate(Base = nombre_base) |>
+    dplyr::select(
+      Base, term, estimate, std.error, statistic, p.value, conf.low, conf.high
+    )
 }
 
-tabla_coef <- bind_rows(
+tabla_coef <- dplyr::bind_rows(
   coeficientes_modelo(mod_mat, "Matemáticas"),
   coeficientes_modelo(mod_por, "Portugués")
 )
@@ -690,18 +695,36 @@ knitr::kable(
   )
 ```
 
-Los resultados de las Tablas \@ref(tab:ajusteModelos) y \@ref(tab:estadisticosModelo) muestran en ambos casos que la pendiente es positiva, altamente significativa y muy cercana a uno. En Matemáticas, por cada punto adicional en **G2**, la nota final **G3** aumenta en promedio cerca de **1.10 puntos**; en Portugués el incremento promedio es de **1.02 puntos**. Además, el coeficiente de determinación es alto en ambas bases, lo que indica que la nota del segundo periodo explica una proporción muy importante de la variabilidad de la nota final.
+Los resultados de las Tablas \@ref(tab:ajusteModelos) y \@ref(tab:estadisticosModelo) muestran que, en ambas asignaturas, la pendiente asociada a G2 es positiva y altamente significativa. En Matemáticas, por cada punto adicional en G2, la nota final G3 aumenta en promedio cerca de **1.10 puntos** ; en Portugués, el incremento promedio es de **1.02 puntos**. Asimismo, los altos valores de **R²** indican que la nota del segundo periodo explica una proporción sustancial de la variabilidad observada en la nota final.
 
-# Diagnóstico, atípicos e influencia
+Más allá de estos resultados, es importante interpretar su significado en el contexto del problema. La fuerte relación entre G2 y G3 sugiere una alta continuidad en el desempeño académico de los estudiantes, es decir, quienes obtienen buenos resultados en el segundo periodo tienden a mantener ese rendimiento en la nota final.
+
+Sin embargo, esta relación también debe analizarse con cautela, ya que G2 no es una variable externa o explicativa en sentido amplio, sino una medida del mismo proceso académico en una etapa previa. Esto implica que el modelo tiene una alta capacidad predictiva, pero limitada capacidad explicativa sobre las causas del rendimiento.
+
+En este sentido, aunque el modelo es útil para predecir la nota final, no permite comprender completamente los factores que influyen en el desempeño de los estudiantes, lo que sugiere la necesidad de incorporar otras variables que capturen dimensiones adicionales del contexto educativo.
+
+# Análisis Diagnóstico
 
 ```{r funcionesDiagnostico}
+interpretar_p <- function(p) {
+  ifelse(p > 0.05,
+         paste0(round(p, 5), " (Cumple)"),
+         paste0(round(p, 5), " (No cumple)"))
+}
+
 diagnostico_modelo <- function(mod, nombre_base) {
+  
+  shapiro_p <- shapiro.test(residuals(mod))$p.value
+  bp_p <- lmtest::bptest(mod)$p.value
+  dw <- lmtest::dwtest(mod)
+
   tibble(
     Base = nombre_base,
-    `Shapiro p-valor (Normalidad)` = shapiro.test(residuals(mod))$p.value,
-    `Breusch-Pagan p-valor (Homocedasticidad)` = lmtest::bptest(mod)$p.value,
-    `Durbin-Watson p-valor (Independencia)` = lmtest::dwtest(mod)$p.value,
-    `Durbin-Watson estadístico (Independencia)` = unname(lmtest::dwtest(mod)$statistic)
+    `Shapiro p-valor (Normalidad)` = interpretar_p(shapiro_p),
+    `Breusch-Pagan p-valor (Homocedasticidad)` = interpretar_p(bp_p),
+    `Durbin-Watson p-valor (Independencia)` = interpretar_p(dw$p.value),
+    `Durbin-Watson estadístico (Independencia)` = 
+      paste0(round(unname(dw$statistic), 5))
   )
 }
 
@@ -710,15 +733,13 @@ diagnosticos <- bind_rows(
   diagnostico_modelo(mod_por, "Portugués")
 )
 
-# Transponer tabla
 diagnosticos_t <- diagnosticos |>
-  tidyr::pivot_longer(-Base, names_to = "Prueba", values_to = "Valor") |>
-  tidyr::pivot_wider(names_from = Base, values_from = Valor)
+  pivot_longer(-Base, names_to = "Prueba", values_to = "Valor") |>
+  pivot_wider(names_from = Base, values_from = Valor)
 
 knitr::kable(
   diagnosticos_t,
-  caption = "Pruebas de diagnóstico del modelo según supuestos: normalidad, homocedasticidad e independencia.",
-  digits = 5,
+  caption = "Pruebas de diagnóstico del modelo según supuestos.",
   format = "html"
 ) |>
   kableExtra::kable_styling(
@@ -766,7 +787,9 @@ plot_diag(mod_mat, "Matemáticas")
 
 plot_diag(mod_por, "Portugués")
 ```
+El diagnóstico sugiere que los supuestos clásicos no se cumplen de forma estricta. En particular, la normalidad de los errores se rechaza en ambos modelos y la prueba de Breusch-Pagan aporta evidencia de heterocedasticidad tanto en Matemáticas como en Portugués; además, en Portugués también se detecta incumplimiento del supuesto de independencia. Se exploraron transformaciones y especificaciones alternativas, pero las mejoras obtenidas no compensaron la pérdida de interpretabilidad ni alteraron de forma sustancial la decisión final. Por ello, se mantuvo el modelo lineal simple en la escala original, reconociendo explícitamente sus limitaciones inferenciales.(ver anexos)
 
+# Análisis Atípicos e influencia
 ```{r observacionesInfluyentes}
 resumen_influencia <- function(mod, nombre_base) {
   infl <- broom::augment(mod) |>
@@ -804,7 +827,7 @@ knitr::kable(
   )
 ```
 
-El diagnóstico deja tres ideas principales. Primero, la linealidad entre **G2** y **G3** es clara y explica buena parte de la variación en ambas asignaturas. Segundo, la normalidad de los errores no se cumple de manera estricta y la prueba de Breusch-Pagan sugiere heterocedasticidad leve a moderada. Tercero, existen observaciones influyentes, aunque la mayoría no alcanza valores extremos de Cook. Se ensayaron transformaciones y se estudió la influencia de observaciones atípicas, pero la mejora no compensó la pérdida de interpretabilidad. Por esto se mantuvo el modelo lineal simple en la escala original, dejando explícitas sus limitaciones.
+El análisis de observaciones atípicas e influyentes muestra que, aunque existen algunos casos con influencia relativa sobre el ajuste, la mayoría no alcanza valores extremos de la distancia de Cook. En consecuencia, no se justifica la exclusión de observaciones, ya que su efecto sobre el modelo es limitado y forma parte de la variabilidad natural del desempeño estudiantil. Por ello, se mantuvo el modelo lineal simple en la escala original. (ver anexos).
 
 # Intervalos de confianza y predicciones
 
@@ -935,11 +958,17 @@ La tabla \@ref(tab:tablaPredicciones) muestra dos aspectos distintos. El **inter
 
 # Discusión y conclusiones
 
-El análisis confirma que **G2 es el predictor cuantitativo más promisorio de G3** tanto en Matemáticas como en Lengua Portuguesa, mientras que **G1** ocupa consistentemente el segundo lugar. Esta evidencia muestra que el desempeño previo es el mejor resumen del rendimiento final. Esta conclusión es valiosa porque permite construir un modelo lineal simple fuerte, interpretable y directamente utilizable en una aplicación productiva, aunque no cumpla los supuestos al 100%.
+El análisis confirma que **G2 es el predictor cuantitativo más promisorio de G3** tanto en Matemáticas como en Lengua Portuguesa, mientras que **G1** ocupa consistentemente el segundo lugar. Esta evidencia sugiere que el desempeño previo constituye el mejor resumen disponible del rendimiento final dentro de la restricción metodológica de emplear una sola variable cuantitativa. En consecuencia, es posible construir un modelo lineal simple con alta capacidad explicativa, interpretación directa y utilidad práctica para la aplicación.
 
 En Matemáticas, el modelo explica alrededor del **81.9%** de la variabilidad de G3; en Portugués explica aproximadamente **84.4%**. Las pendientes son positivas y altamente significativas en ambos casos, de modo que el comportamiento de la nota final sigue muy de cerca la nota del segundo periodo. Esto no significa que otras variables carezcan de interés, sino que, bajo la restricción metodológica de usar una sola variable cuantitativa, **G2 domina claramente a las demás**.
 
-Respecto a los supuestos, el modelo presenta una situación típica en datos educativos con calificaciones discretas y acotadas: el ajuste lineal es muy bueno, pero la normalidad residual no se cumple estrictamente. Aún así el modelo es cercano y puede ser usado. Se revisaron transformaciones y se estudió la influencia de observaciones atípicas; sin embargo, el modelo original en escala natural fue el más conveniente por equilibrio entre ajuste, interpretación y uso práctico.
+Respecto a los supuestos, el modelo presenta una situación frecuente en datos educativos discretos y acotados: el ajuste lineal es alto, pero la normalidad residual no se cumple estrictamente, la homocedasticidad también se ve afectada y, en el caso de Portugués, la independencia de los errores tampoco se sostiene por completo. Esto no invalida su utilidad predictiva, pero sí aconseja interpretar con cautela la inferencia clásica asociada al modelo. Se revisaron transformaciones y se estudió la influencia de observaciones atípicas; sin embargo, el modelo original en escala natural resultó el más conveniente por su equilibrio entre ajuste, interpretabilidad y uso práctico.
+
+En términos aplicados, este resultado permite anticipar con buena precisión la nota final a partir del desempeño del segundo periodo y, por tanto, ofrece una herramienta útil para seguimiento académico temprano. No obstante, su uso debe entenderse como apoyo a la decisión y no como sustituto del juicio pedagógico, especialmente en presencia de trayectorias individuales atípicas. 
+
+Si bien el modelo permite generar predicciones puntuales de la nota final, es importante reconocer que estas estimaciones están sujetas a un grado de incertidumbre. Los intervalos de predicción reflejan esta variabilidad y muestran que, incluso con una misma variable predictora, el resultado puede variar considerablemente.
+
+En términos prácticos, esto implica que el modelo es útil como herramienta orientativa, pero no debe interpretarse como un mecanismo determinista. Su mayor valor radica en identificar tendencias generales más que en predecir resultados individuales con total precisión.
 
 Por tanto, el modelo final recomendado es:
 
@@ -947,6 +976,18 @@ Por tanto, el modelo final recomendado es:
 - **Portugués:** `G3 = 0.122 + 1.018·G2`
 
 Asimismo, conviene implementar la predicción acotada al rango **0–20** para no tener valores inadecuados de predicción.
+
+**Observaciones importantes:**
+
+- Más allá de los resultados obtenidos, es importante reconocer que el modelo de regresión lineal simple permite identificar tendencias generales en el rendimiento académico, pero no logra capturar toda la complejidad del fenómeno. El desempeño de un estudiante no depende únicamente de una variable cuantitativa, sino de múltiples factores que interactúan entre sí, como el contexto familiar, la motivación, los hábitos de estudio y las condiciones del entorno educativo.
+
+- En este sentido, aunque el modelo presenta una relación estadísticamente significativa, su capacidad explicativa es parcial. Esto se evidencia en la dispersión de los datos y en el hecho de que no toda la variabilidad de la nota final es explicada por la variable predictora.
+
+- El análisis de los supuestos del modelo evidencia que no todos se cumplen de manera adecuada. En particular, se observan desviaciones en los residuos que indican posibles problemas de homocedasticidad y/o normalidad. Estas situaciones afectan la validez de los intervalos de confianza y de las pruebas de hipótesis, ya que dichas inferencias dependen del cumplimiento de estos supuestos. En consecuencia, aunque el modelo permite identificar una tendencia general, sus resultados deben interpretarse con precaución.
+
+- La presencia de valores atípicos sugiere que existen casos particulares que no siguen el patrón general. Estos casos pueden representar situaciones reales dentro del contexto educativo, lo que refuerza la idea de que el modelo no debe interpretarse de manera rígida, sino como una herramienta de aproximación.
+
+**Todo esto implica que las conclusiones obtenidas no deben extrapolarse de manera directa a nuevos datos, especialmente si estos presentan características diferentes a las observadas en la muestra analizada.**
 
 # Referencias
 
@@ -956,66 +997,278 @@ Asimismo, conviene implementar la predicción acotada al rango **0–20** para n
 
 # Anexos
 
-## Anexo A. Código auxiliar para comparar transformaciones
+## Anexo A. Código auxiliar para comparar transformaciones y polinomios
 
 ```{r transformacionesAnexo}
-comparar_transformaciones <- function(df) {
-  mod_raw  <- lm(G3 ~ G2, data = df)
-  mod_sqrt <- lm(sqrt(G3) ~ G2, data = df)
-  mod_log  <- lm(log(G3 + 1) ~ G2, data = df)
-
-  tibble(
-    Modelo = c("G3 ~ G2", "sqrt(G3) ~ G2", "log(G3 + 1) ~ G2"),
-    R2 = c(summary(mod_raw)$r.squared, summary(mod_sqrt)$r.squared, summary(mod_log)$r.squared),
-    Shapiro_p = c(shapiro.test(residuals(mod_raw))$p.value,
-                  shapiro.test(residuals(mod_sqrt))$p.value,
-                  shapiro.test(residuals(mod_log))$p.value),
-    BP_p = c(lmtest::bptest(mod_raw)$p.value,
-             lmtest::bptest(mod_sqrt)$p.value,
-             lmtest::bptest(mod_log)$p.value)
-  )
+# Función para marcar cumplimiento según p-valor
+etiqueta_cumplimiento <- function(p) {
+  ifelse(p > 0.05, "sí cumple", "no cumple")
 }
 
+# Función Box-Cox sobre la respuesta
+ajustar_boxcox_y <- function(df) {
+  df <- as.data.frame(df)
+  df$G3_bc_base <- df$G3 + 1
+  
+  bc <- MASS::boxcox(
+    G3_bc_base ~ G2,
+    data = df,
+    lambda = seq(-2, 2, by = 0.1),
+    plotit = FALSE
+  )
+  
+  lambda_opt <- bc$x[which.max(bc$y)]
+  
+  if (abs(lambda_opt) < 1e-8) {
+    df$G3_trans <- log(df$G3_bc_base)
+  } else {
+    df$G3_trans <- (df$G3_bc_base^lambda_opt - 1) / lambda_opt
+  }
+  
+  mod_bc <- lm(G3_trans ~ G2, data = df)
+  
+  list(modelo = mod_bc, lambda = lambda_opt)
+}
+
+comparar_transformaciones <- function(df, nombre_base) {
+  df <- as.data.frame(df)
+  
+  # Box-Cox
+  boxcox_y <- ajustar_boxcox_y(df)
+  
+  especificaciones <- list(
+    
+    # 1. Lineal
+    list(
+      tipo = "1. Lineal",
+      modelo = "Lineal simple",
+      ecuacion = "G3 ~ G2",
+      ajuste = lm(G3 ~ G2, data = df),
+      lambda = NA
+    ),
+    
+    # 2. Lineal con transformaciones
+    list(
+      tipo = "2. Lineal con transformaciones",
+      modelo = "Raíz en respuesta",
+      ecuacion = "sqrt(G3) ~ G2",
+      ajuste = lm(sqrt(G3) ~ G2, data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "2. Lineal con transformaciones",
+      modelo = "Log en respuesta",
+      ecuacion = "log(G3 + 1) ~ G2",
+      ajuste = lm(log(G3 + 1) ~ G2, data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "2. Lineal con transformaciones",
+      modelo = "Raíz en predictora",
+      ecuacion = "G3 ~ sqrt(G2)",
+      ajuste = lm(G3 ~ sqrt(G2), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "2. Lineal con transformaciones",
+      modelo = "Log en predictora",
+      ecuacion = "G3 ~ log(G2 + 1)",
+      ajuste = lm(G3 ~ log(G2 + 1), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "2. Lineal con transformaciones",
+      modelo = "Raíz en ambas",
+      ecuacion = "sqrt(G3) ~ sqrt(G2)",
+      ajuste = lm(sqrt(G3) ~ sqrt(G2), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "2. Lineal con transformaciones",
+      modelo = "Log en ambas",
+      ecuacion = "log(G3 + 1) ~ log(G2 + 1)",
+      ajuste = lm(log(G3 + 1) ~ log(G2 + 1), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "2. Lineal con transformaciones",
+      modelo = "Y log y X raíz",
+      ecuacion = "log(G3 + 1) ~ sqrt(G2)",
+      ajuste = lm(log(G3 + 1) ~ sqrt(G2), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "2. Lineal con transformaciones",
+      modelo = "Y raíz y X log",
+      ecuacion = "sqrt(G3) ~ log(G2 + 1)",
+      ajuste = lm(sqrt(G3) ~ log(G2 + 1), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "2. Lineal con transformaciones",
+      modelo = "Box-Cox en respuesta",
+      ecuacion = "BC(G3 + 1) ~ G2",
+      ajuste = boxcox_y$modelo,
+      lambda = round(boxcox_y$lambda, 4)
+    ),
+    
+    # 3. Polinómicos
+    list(
+      tipo = "3. Polinómicos",
+      modelo = "Polinómico grado 2",
+      ecuacion = "G3 ~ G2 + I(G2^2)",
+      ajuste = lm(G3 ~ G2 + I(G2^2), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "3. Polinómicos",
+      modelo = "Polinómico grado 3",
+      ecuacion = "G3 ~ G2 + I(G2^2) + I(G2^3)",
+      ajuste = lm(G3 ~ G2 + I(G2^2) + I(G2^3), data = df),
+      lambda = NA
+    ),
+    
+    # 4. Polinómicos con transformaciones
+    list(
+      tipo = "4. Polinómicos con transformaciones",
+      modelo = "Polinómico grado 2 con log en respuesta",
+      ecuacion = "log(G3 + 1) ~ G2 + I(G2^2)",
+      ajuste = lm(log(G3 + 1) ~ G2 + I(G2^2), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "4. Polinómicos con transformaciones",
+      modelo = "Polinómico grado 2 con raíz en respuesta",
+      ecuacion = "sqrt(G3) ~ G2 + I(G2^2)",
+      ajuste = lm(sqrt(G3) ~ G2 + I(G2^2), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "4. Polinómicos con transformaciones",
+      modelo = "Polinómico grado 2 con log en predictora",
+      ecuacion = "G3 ~ log(G2 + 1) + I(log(G2 + 1)^2)",
+      ajuste = lm(G3 ~ log(G2 + 1) + I(log(G2 + 1)^2), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "4. Polinómicos con transformaciones",
+      modelo = "Polinómico grado 2 con raíz en predictora",
+      ecuacion = "G3 ~ sqrt(G2) + I(sqrt(G2)^2)",
+      ajuste = lm(G3 ~ sqrt(G2) + I(sqrt(G2)^2), data = df),
+      lambda = NA
+    ),
+    list(
+      tipo = "4. Polinómicos con transformaciones",
+      modelo = "Polinómico grado 2 con log en ambas",
+      ecuacion = "log(G3 + 1) ~ log(G2 + 1) + I(log(G2 + 1)^2)",
+      ajuste = lm(log(G3 + 1) ~ log(G2 + 1) + I(log(G2 + 1)^2), data = df),
+      lambda = NA
+    )
+  )
+  
+  purrr::map_dfr(especificaciones, function(spec) {
+    mod <- spec$ajuste
+    
+    p_shapiro <- shapiro.test(residuals(mod))$p.value
+    p_bp <- lmtest::bptest(mod)$p.value
+    p_dw <- lmtest::dwtest(mod)$p.value
+    
+    tibble::tibble(
+      Base = nombre_base,
+      `Tipo de modelo` = spec$tipo,
+      `Comentario / familia` = spec$modelo,
+      `Ecuación del modelo` = spec$ecuacion,
+      `Lambda Box-Cox respuesta` = spec$lambda,
+      `R²` = summary(mod)$r.squared,
+      `R² ajustado` = summary(mod)$adj.r.squared,
+      `Error estándar residual` = sigma(mod),
+      `Prueba de Shapiro-Wilk p-valor (Normalidad)` =
+        paste0(sprintf("%.5f", p_shapiro), " (", etiqueta_cumplimiento(p_shapiro), ")"),
+      `Prueba de Breusch-Pagan p-valor (Homocedasticidad)` =
+        paste0(sprintf("%.5f", p_bp), " (", etiqueta_cumplimiento(p_bp), ")"),
+      `Prueba de Durbin-Watson p-valor (Independencia)` =
+        paste0(sprintf("%.5f", p_dw), " (", etiqueta_cumplimiento(p_dw), ")")
+    )
+  })
+}
+
+tabla_transformaciones <- dplyr::bind_rows(
+  comparar_transformaciones(mat, "Matemáticas"),
+  comparar_transformaciones(por, "Portugués")
+) |>
+  dplyr::mutate(
+    orden_tipo = dplyr::case_when(
+      `Tipo de modelo` == "1. Lineal" ~ 1,
+      `Tipo de modelo` == "2. Lineal con transformaciones" ~ 2,
+      `Tipo de modelo` == "3. Polinómicos" ~ 3,
+      `Tipo de modelo` == "4. Polinómicos con transformaciones" ~ 4
+    )
+  ) |>
+  dplyr::arrange(Base, orden_tipo, dplyr::desc(`R² ajustado`)) |>
+  dplyr::select(-orden_tipo)
+
 knitr::kable(
-  bind_rows(
-    comparar_transformaciones(mat) |> mutate(Base = "Matemáticas"),
-    comparar_transformaciones(por) |> mutate(Base = "Portugués")
-  ) |> select(Base, everything()),
-  caption = "Comparación exploratoria entre la escala original y transformaciones simples de la respuesta.",
-  digits = 5,
-  format = "html"
+  tabla_transformaciones,
+  caption = "Comparación integral de especificaciones del modelo, organizada en modelos lineales, lineales con transformaciones, polinómicos y polinómicos con transformaciones, incluyendo calidad de ajuste y verificación de supuestos estadísticos.",
+  format = "html",
+  escape = FALSE
 ) |>
   kableExtra::kable_styling(
     bootstrap_options = c("striped", "hover", "bordered"),
     full_width = FALSE,
-    font_size = 11
-  )
+    font_size = 10
+  ) |>
+  kableExtra::scroll_box(width = "100%", height = "100%")
 ```
+
+De la Tabla \@ref(tab:transformacionesAnexo) se observa diferentes iteraciones con transformaciones, no es estrictamente necesario incluir modelos polinómicos, ya que la relación entre G2 y G3 responde a una lógica de continuidad académica que suele ser aproximadamente lineal. Los problemas identificados en los supuestos (normalidad y homocedasticidad) no implican necesariamente una relación no lineal, sino más bien características propias de la dispersión de los datos. Aún así decidi explorarlos para ver si había alguna mejora pero no, incluyendo hasta combinaciones de polinomicos con transformaciones.
 
 ## Anexo B. Código para identificar observaciones influyentes
 
 ```{r detalleInfluencia}
-detalle_influencia <- function(mod, nombre_base, n_mostrar = 10) {
+detalle_influencia <- function(mod, df, nombre_base, n_mostrar = 10) {
+  n <- nobs(mod)
+  p <- length(coef(mod))
+  
   broom::augment(mod) |>
-    mutate(
-      indice = row_number(),
+    dplyr::mutate(
+      G2 = df$G2,
+      G3 = df$G3,
+      Observación = paste0(
+        "Obs ", row_number(),
+        " (G2=", G2, ", G3=", G3, ")"
+      ),
       leverage = hatvalues(mod),
-      student = rstudent(mod),
-      cook = cooks.distance(mod)
+      residuo_studentizado = rstudent(mod),
+      distancia_cook = cooks.distance(mod),
+      observacion_atipica = ifelse(abs(residuo_studentizado) > 3, "Sí", "No"),
+      leverage_alto = ifelse(leverage > (2 * p / n), "Sí", "No"),
+      influencia_alta = ifelse(distancia_cook > (4 / n), "Sí", "No")
     ) |>
-    arrange(desc(cook)) |>
-    select(indice, .fitted, .resid, leverage, student, cook) |>
-    slice_head(n = n_mostrar) |>
-    mutate(Base = nombre_base) |>
-    select(Base, everything())
+    dplyr::arrange(desc(distancia_cook)) |>
+    dplyr::select(
+      Observación,
+      `Valor ajustado` = .fitted,
+      `Residuo` = .resid,
+      `Leverage` = leverage,
+      `Residuo studentizado` = residuo_studentizado,
+      `Distancia de Cook` = distancia_cook,
+      Atípica = observacion_atipica,
+      `Leverage alto` = leverage_alto,
+      Influyente = influencia_alta
+    ) |>
+    dplyr::slice_head(n = n_mostrar) |>
+    dplyr::mutate(Base = nombre_base, .before = 1)
 }
 
+tabla_influencia_detalle <- dplyr::bind_rows(
+  detalle_influencia(mod_mat, mat, "Matemáticas"),
+  detalle_influencia(mod_por, por, "Portugués")
+)
+
 knitr::kable(
-  bind_rows(
-    detalle_influencia(mod_mat, "Matemáticas"),
-    detalle_influencia(mod_por, "Portugués")
-  ),
-  caption = "Observaciones con mayor distancia de Cook en cada modelo.",
+  tabla_influencia_detalle,
+  caption = "Observaciones con mayor influencia potencial, identificadas por su posición en el dataset y sus valores de G2 y G3.",
   digits = 4,
   format = "html"
 ) |>
@@ -1025,4 +1278,9 @@ knitr::kable(
     font_size = 10
   )
 ```
+
+
+En la Tabla \@ref(tab:detalleInfluencia) se identificaron algunas observaciones con valores de distancia de Cook superiores al umbral teórico 4/n, lo que indica que ejercen una influencia relativamente mayor sobre el modelo. Sin embargo, estos valores no son lo suficientemente altos como para considerarse extremos, y además corresponden a un número reducido de casos. Dado que el objetivo del análisis es predecir la nota final en un contexto educativo real, estas observaciones representan variabilidad propia del desempeño de los estudiantes y no errores en los datos. Por esta razón, no se justifica su eliminación, ya que excluirlas podría sesgar el modelo y reducir su capacidad de representar adecuadamente la realidad académica.
+  
+
 
